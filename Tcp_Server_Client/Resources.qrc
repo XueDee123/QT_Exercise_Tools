@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>img/debug.svg</file>
+        <file>img/add.png</file>
+        <file>img/start.png</file>
+        <file>img/remove.svg</file>
+        <file>img/stop.svg</file>
+        <file>img/client.svg</file>
+        <file>img/server.svg</file>
+        <file>img/menu.svg</file>
+        <file>img/source.svg</file>
+        <file>img/disconnect.svg</file>
+    </qresource>
+</RCC>
