@@ -15,7 +15,6 @@ SOURCES += \
     mainwindow.cpp \
     tcpserver.cpp \
     tcpsocket.cpp \
-    thread.cpp \
     threadhandle.cpp
 
 HEADERS += \
@@ -25,7 +24,6 @@ HEADERS += \
     mainwindow.h \
     tcpserver.h \
     tcpsocket.h \
-    thread.h \
     threadhandle.h
 
 FORMS += \
