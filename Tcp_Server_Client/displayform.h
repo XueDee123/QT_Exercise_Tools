@@ -17,6 +17,7 @@ public:
     explicit DisplayForm(SocketInfo info,bool connect=false,QWidget *parent = nullptr);
     ~DisplayForm();
     void RecData(QByteArray &data,SocketInfo info);
+    SocketInfo GetInfo();
 signals:
      void sendData(const QByteArray & data,SocketInfo& i);
 private:

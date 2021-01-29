@@ -72,6 +72,11 @@ void DisplayForm::RecData(QByteArray &data, SocketInfo info)
 
 }
 
+SocketInfo DisplayForm::GetInfo()
+{
+    return info;
+}
+
 void DisplayForm::Init(bool p)
 {
     if(p)

@@ -27,7 +27,7 @@ signals:
 public slots:
     bool StartServer(const IpInfo *p);
     void StopServer();
-    void CloseClient(IpInfo);
+    void CloseClient(QString);
 protected slots:
     void sockDisConnectSlot(SocketInfo& info, QThread *th);//断开连接的用户信息
 protected:

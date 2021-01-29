@@ -6,6 +6,8 @@
 #include <QTreeWidgetItem>
 #include <QTabWidget>
 #include <QMouseEvent>
+#include "clientmanager.h"
+#include <QThread>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -23,8 +25,10 @@ private:
     Ui::MainWindow *ui;
     QTreeWidget *ipTree;
     QMenu* treeMenu;
+    QAction *disconnectClientAction;
     QAction *disconnectClientToServerAction;
     QAction *newServerAction;
+    QAction *newClientAction;
     QAction *clearServerAction;
     QTreeWidgetItem *serverItem;
     QTreeWidgetItem *serverSonItem;
@@ -32,12 +36,19 @@ private:
     QTabWidget *tabWidget;
 private:
     TcpServer *server;
+    ClientManager *client;
     QVector<QString>*serverTabItems;
+    QThread *clientTh;
 private:
     void InitWindows();
     void NewServer();
+    void NewClient();
+    void SockConnect(SocketInfo& info);
+    void SockConFail();
+    void SockDisConnect(SocketInfo&);
     void ClearServer();
     void DisConnectClientToServer();
+    void DisConnectClient();
     void ServerCallClientStatus(QList<SocketInfo>&p);
     void ClearAllSonTreeItem(QTreeWidgetItem *p);
     void AddSonTreeItem(QIcon icon,QTreeWidgetItem* parent,QTreeWidgetItem* itm);

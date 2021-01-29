@@ -20,6 +20,7 @@ public:
 signals:
     void RecData(QByteArray &data,SocketInfo info);
     void sockDisConnect(SocketInfo& info, QThread *);//NOTE:断开连接的用户信息，此信号必须发出！线程管理类根据信号计数的
+
 public slots:
     void SendData(const QByteArray & ,SocketInfo& i);//发送信号的槽
     void disConTcp(int i);

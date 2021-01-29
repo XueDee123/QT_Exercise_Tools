@@ -19,9 +19,21 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     InitWindows();
+    qDebug()<<"主线程:"<<QThread::currentThreadId();
     server=nullptr;
     serverSonItem=nullptr;
     serverTabItems=new QVector<QString>;
+    clientTh=new QThread;
+    client=new ClientManager;
+    client->moveToThread(clientTh);
+
+
+    connect(clientTh,&QThread::finished,client,&ClientManager::deleteLater);
+    connect(clientTh,&QThread::started,client,&ClientManager::Run);
+    connect(client,&ClientManager::SockConFail,this,&MainWindow::SockConFail);
+    connect(client,&ClientManager::SockConnect,this,&MainWindow::SockConnect);
+    connect(client,&ClientManager::SockDisConnect,this,&MainWindow::SockDisConnect);
+    clientTh->start();
 }
 
 MainWindow::~MainWindow()
@@ -36,6 +48,9 @@ MainWindow::~MainWindow()
         tabWidget->removeTab(i);
 
     }
+
+
+
     if(server!=nullptr)
     {
 
@@ -47,13 +62,21 @@ MainWindow::~MainWindow()
         delete serverTabItems;
         serverTabItems=nullptr;
     }
+    //    qDeleteAll(clientList);
+    //    clientList.clear();
+
+
+    clientTh->quit();
+    clientTh->wait(5000);
+    clientTh->deleteLater();
+
     delete ui;
 
 }
 
 void MainWindow::InitWindows()
 {
-    qDebug()<<"InitWindows当前线程:"<<QThread::currentThreadId();
+
     this->setWindowIcon(QIcon(":/img/debug.svg"));
     this->setWindowTitle("TCP调试工具");
     //create toolbar
@@ -66,17 +89,22 @@ void MainWindow::InitWindows()
     newServerAction=new QAction(QIcon(":/img/add.png"),"创建服务器",this);
     clearServerAction=new QAction(QIcon(":/img/remove.svg"),"移除服务器",this);
     disconnectClientToServerAction=new QAction(QIcon(":/img/disconnect.svg"),"断开连接",this);
+    disconnectClientAction=new QAction(QIcon(":/img/disconnect.svg"),"断开连接",this);
     clearServerAction->setEnabled(false);
+    newClientAction=new QAction(QIcon(":/img/add.png"),"创建客户端",this);
 
     //给工具栏添加动作
     toolbar->addAction(newServerAction);
     toolbar->addAction(clearServerAction);
     toolbar->addSeparator();
+    toolbar->addAction(newClientAction);
 
     //绑定信号槽
     connect(newServerAction,&QAction::triggered,this,&MainWindow::NewServer);
+    connect(newClientAction,&QAction::triggered,this,&MainWindow::NewClient);
     connect(clearServerAction,&QAction::triggered,this,&MainWindow::ClearServer);
     connect(disconnectClientToServerAction,&QAction::triggered,this,&MainWindow::DisConnectClientToServer);
+    connect(disconnectClientAction,&QAction::triggered,this,&MainWindow::DisConnectClient);
 
     //浮动窗口
     QDockWidget * dock = new QDockWidget("属性栏",this);
@@ -157,6 +185,106 @@ void MainWindow::NewServer()
     delete ipInfoDalg;
 }
 
+void MainWindow::NewClient()
+{
+    //这里创建服务器
+
+    //通过对话框获取IP和端口
+    IpInfoDialog *ipInfoDalg=new IpInfoDialog(this); // 创建一个对话框
+    Qt::WindowFlags flags = ipInfoDalg->windowFlags(); // 需要获取返回值
+    ipInfoDalg->setWindowFlags(flags | Qt::MSWindowsFixedSizeDialogHint);  // 设置对话框固定大小
+
+
+    int ref = ipInfoDalg->exec();             // 以模态方式显示对话框
+    if (ref==QDialog::Accepted)        // OK键被按下,对话框关闭
+    {
+        // 当BtnOk被按下时,则设置对话框中的数据
+        IpInfo info={};
+        ipInfoDalg->GetIpInfo(&info);
+#ifdef QT_DEBUG
+        qDebug()<<"NewClient()获取ip:"<<info.ip;
+        qDebug()<<"NewClient()获取port:"<<info.port;
+#endif
+        emit client->AddClient(info);
+        newClientAction->setEnabled(false);
+    }
+    // 最后删除释放对话框句柄
+    delete ipInfoDalg;
+}
+
+void MainWindow::SockConnect(SocketInfo &info)
+{
+    newClientAction->setEnabled(true);
+#ifdef QT_DEBUG
+    qDebug()<<"---------SockConnect处理数据-----------";
+    qDebug()<<"当前时间:"<<QTime::currentTime().toString().toUtf8();
+    qDebug()<<"当前线程:"<<QThread::currentThreadId();
+#endif
+
+    //添加树和tab
+    QString str=QString("%1:%2/%3").arg(info.ip).arg(info.port).arg(info.socketId);
+    auto frm= new DisplayForm(info,true);
+    connect(client,&ClientManager::readData,frm,&DisplayForm::RecData);
+    connect(frm,&DisplayForm::sendData,client,&ClientManager::SendData);
+    tabWidget->addTab(frm,QIcon(":/img/client.svg"),str);
+
+    AddSonTreeItem(QIcon(":/img/client.svg"),clientItem,new QTreeWidgetItem(QStringList()<<str));
+
+}
+
+void MainWindow::SockConFail()
+{
+    newClientAction->setEnabled(true);
+#ifdef QT_DEBUG
+    qDebug()<<"---------SockConFail处理数据-----------";
+    qDebug()<<"当前时间:"<<QTime::currentTime().toString().toUtf8();
+    qDebug()<<"当前线程:"<<QThread::currentThreadId();
+#endif
+    QMessageBox::critical(this,"客户端异常","连接服务器失败");
+}
+
+void MainWindow::SockDisConnect(SocketInfo & info)
+{
+#ifdef QT_DEBUG
+    qDebug()<<"---------SockDisConnect处理数据-----------";
+    qDebug()<<"当前时间:"<<QTime::currentTime().toString().toUtf8();
+    qDebug()<<"当前线程:"<<QThread::currentThreadId();
+#endif
+    QString str=QString("%1:%2/%3").arg(info.ip).arg(info.port).arg(info.socketId);
+    //移除 client树和tab
+    for(int i=clientItem->childCount()-1;i>=0;i--)
+    {
+        if (clientItem->child(i)->text(0) == str)
+        {
+            QTreeWidgetItem *tepitm= clientItem->child(i);
+            clientItem->removeChild(tepitm);
+#ifdef QT_DEBUG
+            qDebug()<<QString("%1->%2").arg("开始清理节点").arg(tepitm->text(0));
+#endif
+            delete tepitm;
+            tepitm=nullptr;
+        }
+    }
+    for(int i=tabWidget->count()-1;i>=0;i--)
+    {
+        QString str1=tabWidget->tabText(i);
+
+        if(str1==str)
+        {
+            auto tw =tabWidget->widget(i);
+            tabWidget->removeTab(i);
+            delete  tw;
+        }
+    }
+
+}
+
+
+
+
+
+
+
 void MainWindow::ClearServer()
 {
     //这个清理服务器
@@ -224,7 +352,7 @@ void MainWindow::ServerCallClientTreeStatus(QList<SocketInfo>&p, QTreeWidgetItem
 
         for(auto i=p.begin();i!=p.end();i++)
         {
-            tempSock.push_back(QString("%1:%2").arg((*i).ip).arg((*i).port));
+            tempSock.push_back(QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId));
         }
 
         for(int i=item->childCount()-1;i>=0;i--)
@@ -265,7 +393,7 @@ void MainWindow::ServerCallClientTreeStatus(QList<SocketInfo>&p, QTreeWidgetItem
         //增加子节
         for(auto i=p.begin();i!=p.end();i++)
         {
-            QString str=QString("%1:%2").arg((*i).ip).arg((*i).port);
+            QString str=QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId);
             QVector<QString>::iterator it = std::find(tempdifference.begin(), diend, str);
             if(it!=diend)
             {
@@ -280,7 +408,7 @@ void MainWindow::ServerCallClientTreeStatus(QList<SocketInfo>&p, QTreeWidgetItem
         //增加子节
         for(auto i=p.begin();i!=p.end();i++)
         {
-            QString str=QString("%1:%2").arg((*i).ip).arg((*i).port);
+            QString str=QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId);
             //添加子节点
             AddSonTreeItem(QIcon(":/img/client.svg"),item,new QTreeWidgetItem(QStringList()<<str));
 
@@ -305,9 +433,12 @@ void MainWindow::ServerCallClientTabStatus(QList<SocketInfo>&p, QTabWidget *tab,
 
         for(auto i=p.begin();i!=p.end();i++)
         {
-            tempSock.push_back(QString("%1:%2").arg((*i).ip).arg((*i).port));
+            tempSock.push_back(QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId));
         }
-
+#ifdef QT_DEBUG
+        qDebug()<<QString("serverItem大小:%1  tempSock大小:%2").arg(serverItem->count()).arg(tempSock.count());
+        qDebug()<<QString("tabitem容器大小:%1").arg(tab->count());
+#endif
         //目标容器需要开辟空间
         //大容器包含小容器 ，取小容器
         tempIntersection.resize(std::min( tempSock.size() , serverItem->size()));
@@ -329,13 +460,19 @@ void MainWindow::ServerCallClientTabStatus(QList<SocketInfo>&p, QTabWidget *tab,
             QVector<QString>::iterator it = std::find(tempServerItemdifference.begin(), diendServerItem, str);
             if(it!=diendServerItem)
             {
-                delete tab->widget(i);
+#ifdef QT_DEBUG
+                qDebug()<<QString("tabitem容器准备删除:%1").arg(str);
+                qDebug()<<QString("tabitem容器大小:%1").arg(tab->count());
+#endif
+                auto tw=tab->widget(i);
                 tab->removeTab(i);
+                delete tw;
                 QVector<QString>::iterator it1 = std::find(serverItem->begin(), serverItem->end(), str);
                 if(it1!=serverItem->end())serverItem->erase(it1);
 
 #ifdef QT_DEBUG
                 qDebug()<<QString("serverItem移除%1,容器大小:%2").arg(str).arg(serverItem->count());
+                qDebug()<<QString("tabitem容器大小:%1").arg(tab->count());
 #endif
             }
         }
@@ -345,13 +482,13 @@ void MainWindow::ServerCallClientTabStatus(QList<SocketInfo>&p, QTabWidget *tab,
         //增加子节
         for(auto i=p.begin();i!=p.end();i++)
         {
-            QString str=QString("%1:%2").arg((*i).ip).arg((*i).port);
+            QString str=QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId);
             QVector<QString>::iterator it = std::find(tempdifference.begin(), diend, str);
             if(it!=diend)
             {
-               auto frm= new DisplayForm((*i),true);
-               connect(server,&TcpServer::readData,frm,&DisplayForm::RecData);
-               connect(frm,&DisplayForm::sendData,server,&TcpServer::sendData);
+                auto frm= new DisplayForm((*i),true);
+                connect(server,&TcpServer::readData,frm,&DisplayForm::RecData);
+                connect(frm,&DisplayForm::sendData,server,&TcpServer::sendData);
                 tab->addTab(frm,QIcon(":/img/client.svg"),str);
                 serverItem->push_back(str);
 #ifdef QT_DEBUG
@@ -365,10 +502,10 @@ void MainWindow::ServerCallClientTabStatus(QList<SocketInfo>&p, QTabWidget *tab,
         //增加
         for(auto i=p.begin();i!=p.end();i++)
         {
-           QString str=QString("%1:%2").arg((*i).ip).arg((*i).port);
-           auto frm= new DisplayForm((*i),true);
-           connect(server,&TcpServer::readData,frm,&DisplayForm::RecData);
-           connect(frm,&DisplayForm::sendData,server,&TcpServer::sendData);
+            QString str=QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId);
+            auto frm= new DisplayForm((*i),true);
+            connect(server,&TcpServer::readData,frm,&DisplayForm::RecData);
+            connect(frm,&DisplayForm::sendData,server,&TcpServer::sendData);
             tabWidget->addTab(frm,QIcon(":/img/client.svg"),str);
             serverItem->push_back(str);
 #ifdef QT_DEBUG
@@ -391,8 +528,9 @@ void MainWindow::ClearAllServerTabItems(QTabWidget *tab, QVector<QString> *serve
         QVector<QString>::iterator it = std::find(serverItem->begin(), serverItem->end(), str);
         if(it!=serverItem->end())
         {
-            delete tab->widget(i);
+            auto tw= tab->widget(i);
             tab->removeTab(i);
+            delete  tw;
             serverItem->erase(it);
 #ifdef QT_DEBUG
             qDebug()<<QString("serverItem移除%1,容器大小:%2").arg(str).arg(serverItem->count());
@@ -408,25 +546,32 @@ void MainWindow::ClearAllServerTabItems(QTabWidget *tab, QVector<QString> *serve
 void MainWindow::TreeWidgetItemPressed_Slot(QTreeWidgetItem *p, int i)
 {
     if (QApplication::mouseButtons()& Qt::RightButton)
+    {
+        treeMenu->clear();
+
+        if((p->text(i)==serverItem->text(i)))
         {
-                treeMenu->clear();
+            treeMenu->addAction(newServerAction);
+            treeMenu->addAction(clearServerAction);
+            treeMenu->exec(QCursor::pos());
+        }
+        else if(p->text(i)==clientItem->text(i))
+        {
+            treeMenu->addAction(newClientAction);
+            treeMenu->exec(QCursor::pos());
+        }
 
-                if((p->text(i)==serverItem->text(i)))
-                {
-                    treeMenu->addAction(newServerAction);
-                    treeMenu->addAction(clearServerAction);
-                    treeMenu->exec(QCursor::pos());
-                }
-                else if(serverSonItem!=nullptr)
-                {
-                    if(serverSonItem->text(i)==p->parent()->text(i))
-                    {
-                        treeMenu->addAction(disconnectClientToServerAction);
-                        treeMenu->exec(QCursor::pos());   //菜单弹出位置为鼠标点击位置
+        else  if((serverSonItem->text(i)==p->parent()->text(i))&&(p->parent()->parent()->text(i)==serverItem->text(i)))
+        {
+            treeMenu->addAction(disconnectClientToServerAction);
+            treeMenu->exec(QCursor::pos());   //菜单弹出位置为鼠标点击位置
 
-                    }
-                }
-
+        }
+        else if(clientItem->text(i)==p->parent()->text(i))
+        {
+            treeMenu->addAction(disconnectClientAction);
+            treeMenu->exec(QCursor::pos());   //菜单弹出位置为鼠标点击位置
+        }
     }
 }
 
@@ -435,14 +580,14 @@ void MainWindow::TreeWidgetItemDoubleClicked_Slot(QTreeWidgetItem *p, int index)
 #ifdef QT_DEBUG
     qDebug()<<"触发双击事件";
 #endif
-     for(int i=tabWidget->count()-1;i>=0;i--)
-     {
-         if(tabWidget->tabText(i)==p->text(index))
-         {
-             tabWidget->setCurrentIndex(i);
-             break;
-         }
-     }
+    for(int i=tabWidget->count()-1;i>=0;i--)
+    {
+        if(tabWidget->tabText(i)==p->text(index))
+        {
+            tabWidget->setCurrentIndex(i);
+            break;
+        }
+    }
 }
 
 void MainWindow::DisConnectClientToServer()
@@ -450,10 +595,16 @@ void MainWindow::DisConnectClientToServer()
 #ifdef QT_DEBUG
     qDebug()<<"收到断开客户端信号"<<ipTree->currentItem()->text(0);
 #endif
-    QStringList temp =  ipTree->currentItem()->text(0).split(":");
-    IpInfo info;
-    info.ip=temp[0];
-    info.port=temp[1].toInt();
-    server->CloseClient(info);
+    //    QStringList temp =  ipTree->currentItem()->text(0).split(":");
+    //    IpInfo info;
+    //    info.ip=temp[0];
+    //    info.port=temp[1].toInt();
+    server->CloseClient(ipTree->currentItem()->text(0));
 
+}
+
+void MainWindow::DisConnectClient()
+{
+    QStringList temp =  ipTree->currentItem()->text(0).split("/");
+    emit client->SendDisConnect(temp[1].toUInt());
 }

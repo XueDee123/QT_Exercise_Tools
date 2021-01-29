@@ -82,11 +82,12 @@ void TcpServer::StopServer()
     this->close();
 }
 
-void TcpServer::CloseClient(IpInfo info)
+void TcpServer::CloseClient(QString info)
 {
     for(auto i=clientsStatus.begin();i!=clientsStatus.end();i++)
     {
-        if(((IpInfo)(*i))==info)
+         QString str=QString("%1:%2/%3").arg((*i).ip).arg((*i).port).arg((*i).socketId);
+        if(str==info)
         {
              emit this->sendDisConnect((*i).socketId);
         }

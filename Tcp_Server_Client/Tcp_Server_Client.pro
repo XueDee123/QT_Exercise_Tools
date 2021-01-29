@@ -9,19 +9,23 @@ CONFIG += c++11
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    clientmanager.cpp \
     displayform.cpp \
     ipinfodialog.cpp \
     main.cpp \
     mainwindow.cpp \
+    tcpclient.cpp \
     tcpserver.cpp \
     tcpsocket.cpp \
     threadhandle.cpp
 
 HEADERS += \
     Parameter.h \
+    clientmanager.h \
     displayform.h \
     ipinfodialog.h \
     mainwindow.h \
+    tcpclient.h \
     tcpserver.h \
     tcpsocket.h \
     threadhandle.h
